@@ -28,6 +28,10 @@
     - [PUT request method](#put-request-method)
     - [DELETE request method](#delete-request-method)
     - [Obtaining JSON from browser](#obtaining-json-from-browser)
+- [Simple Register and Login API](#simple-register-and-login-api)
+    - [Creating built in User model serializer](#creating-built-in-user-model-serializer)
+    - [Token Authentication](#token-authentication)
+    - [Generating auth tokens through API](#generating-auth-tokens-through-api)
 ### Preparation
 #### Package version
 - Version of packages included in `requirements.txt`
@@ -386,5 +390,122 @@ All API viewpoints are based on certain API methods, which include:
 - Now use the method `urlpatterns=format_suffix_patterns(urlpatterns)`
 - In `views.py` add `format=None` in `product_list` function
 - Now in browser view the JSON in `http://127.0.0.1:8000/product_list.json`
+
+[⬆️ Go to top](#context)
+
+### Simple Register and Login API
+#### Creating built in User model serializer
+- Import `from django.contrib.auth.models import User`
+- Create `Registration_Serializer` serializer
+    ```py
+    class Registration_Serializer(serializers.ModelSerializer):
+        password2=serializers.CharField(
+            style={'input_type':'password'},
+            write_only=True,
+            required=True,
+        )
+        class Meta:
+            model=User
+            fields=['username','email','password','password2']
+            extra_kwargs={
+                'password':{'write_only':True}
+            }
+        def save(self):
+            user=User(
+                username=self.validated_data['username'],
+                email=self.validated_data['email'],
+            )
+            password=self.validated_data['password']
+            password2=self.validated_data['password2']
+            
+            if password!=password2:
+                raise serializers.ValidationError({'password':'Sorry,password did not matched'})
+            
+            user.set_password(password)
+            user.save()
+            return user
+    ```
+- Create `register` function in `views.py`
+    ```py
+    @api_view(['POST'])
+    def register(request):
+        if request.method == 'POST':
+            # Deserialize the request data into a Registration_Serializer
+            serializer = Registration_Serializer(data=request.data)
+            data = {}
+            
+            # Check if the serialized data is valid
+            if serializer.is_valid():
+                # Save the new user and add a success message to the response data
+                user = serializer.save()
+                data['response'] = 'Successfully registered a new user'
+            else:
+                # Add the serializer errors to the response data
+                data = serializer.errors
+            
+            # Return the response data
+            return Response(data)
+    ```
+- Add url path in `urls.py`
+    ```py
+    path('register/',register,name='register'),
+    ```
+- Now in Postman go to this `http://127.0.0.1:8000/register/` route and select `form-data`
+- Fill-up form and send request
+- Successful request will give success message
+    ```json
+    {
+        "response": "Successfully registered a new user"
+    }
+    ```
+- We can check the new user by login in admin `http://127.0.0.1:8000/admin/`
+
+[⬆️ Go to top](#context)
+
+#### Token Authentication
+- Installation
+    - Navigate to [TokenAuthentication](https://www.django-rest-framework.org/api-guide/authentication/#tokenauthentication) Documentation
+    - Add `rest_framework.authtoken` inside `INSTALLED_APPS` in `settings.py` and migrate it
+- Create PostSave receiver
+    - In `models.py` import these
+        ```py
+        from django.contrib.auth.models import User
+        from django.db.models.signals import post_save
+        from django.dispatch import receiver
+        from rest_framework.authtoken.models import Token
+        ```
+    - Create a function
+        ```py
+        @receiver(post_save,sender=User)
+        def generate_auth_token(sender,instance=None,created=False,**kwargs):
+            if created:
+                Token.objects.create(user=instance)
+        ```
+- Now to test if token create is working or not delete superuser and other existing user and create new user
+- In admin page Token section there will be token for each user now
+
+[⬆️ Go to top](#context)
+
+#### Generating auth tokens through API
+- Import `from rest_framework.authtoken.models import Token` inside `views.py`
+- In `register` function add `auth_token`
+    ```py
+    # Check if the serialized data is valid
+    if serializer.is_valid():
+        # Save the new user and add a success message to the response data
+        user = serializer.save()
+        data['response'] = 'Successfully registered a new user'
+        
+        # login 
+        auth_token=Token.objects.get(user=user).key
+        data['token']=auth_token
+    ```
+- Import `from rest_framework.authtoken.views import obtain_auth_token` in `urls.py` 
+- Create a `login` route in `urls.py`
+    ```py
+    path('login/',obtain_auth_token,name='login'),
+    ```
+- Now in Postman register a new user by selecting `POST` request and `form-data`
+- After creating new user, login that user `http://127.0.0.1:8000/login/` route
 
 [⬆️ Go to top](#context)

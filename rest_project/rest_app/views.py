@@ -1,9 +1,10 @@
 from django.shortcuts import render
 from rest_framework.response import Response
 from .models import Product_Model
-from .serializers import Product_Serializer
+from .serializers import Product_Serializer,Registration_Serializer
 from rest_framework.decorators import api_view
 from rest_framework import status
+from rest_framework.authtoken.models import Token
 # Create your views here.
 
 @api_view(['GET','POST'])
@@ -55,3 +56,26 @@ def product(request,pk):
         product.delete()
         # Return a 204 No Content status
         return Response(status=status.HTTP_204_NO_CONTENT)
+    
+@api_view(['POST'])
+def register(request):
+    if request.method == 'POST':
+        # Deserialize the request data into a Registration_Serializer
+        serializer = Registration_Serializer(data=request.data)
+        data = {}
+        
+        # Check if the serialized data is valid
+        if serializer.is_valid():
+            # Save the new user and add a success message to the response data
+            user = serializer.save()
+            data['response'] = 'Successfully registered a new user'
+            
+            # login 
+            auth_token=Token.objects.get(user=user).key
+            data['token']=auth_token
+        else:
+            # Add the serializer errors to the response data
+            data = serializer.errors
+        
+        # Return the response data
+        return Response(data)
